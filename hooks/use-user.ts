@@ -11,8 +11,9 @@ export function useUser(initialUser: User | null = null) {
   useEffect(() => {
     const supabase = createClient()
 
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user)
+    // getSession reads from the local cookie — no network round-trip
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
       setLoading(false)
     })
 
