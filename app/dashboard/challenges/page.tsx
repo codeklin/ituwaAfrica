@@ -25,6 +25,7 @@ interface PracticeIdea {
   description: string
   prompt: string
   courseSlug: string
+  lessonSlug: string
   tone: string
 }
 
@@ -36,6 +37,7 @@ const practiceIdeas: PracticeIdea[] = [
     description: 'Choose a real task. Tell AI what you need, add key details and ask for a clear format.',
     prompt: 'Think of one task you do regularly (writing a message, researching a topic, planning something). Write the prompt you would give an AI tool to help you do it better. Include: who you are, what you need, the format you want the output in.',
     courseSlug: 'ai-toolkit-practical-start',
+    lessonSlug: 'lesson-4',
     tone: 'coral',
   },
   {
@@ -45,6 +47,7 @@ const practiceIdeas: PracticeIdea[] = [
     description: 'Use AI to explore ideas. Choose who the channel is for and outline one original video.',
     prompt: 'Use an AI tool to brainstorm. Then write: (1) the channel name and niche, (2) the target audience in one sentence, (3) the title and 3-line outline of your first original video idea.',
     courseSlug: 'youtube-monetization',
+    lessonSlug: 'lesson-2',
     tone: 'amber',
   },
   {
@@ -54,6 +57,7 @@ const practiceIdeas: PracticeIdea[] = [
     description: 'Ask AI for a first draft. Check it for mistakes, then improve it yourself.',
     prompt: 'Pick a real task (a message, a summary, a list). Get a first draft from AI. Paste the AI output here, then write one sentence explaining what you changed or improved and why.',
     courseSlug: 'ai-toolkit-practical-start',
+    lessonSlug: 'lesson-7',
     tone: 'lavender',
   },
   {
@@ -63,6 +67,7 @@ const practiceIdeas: PracticeIdea[] = [
     description: 'Choose a business, identify one customer need and outline a useful campaign idea with a clear goal.',
     prompt: 'Pick a small business (real or made up). Write: (1) the business name and what it sells, (2) one problem its customers have, (3) a campaign idea with a clear goal, one content type, and one call to action.',
     courseSlug: 'ai-content-marketing-for-business',
+    lessonSlug: 'lesson-3',
     tone: 'peach',
   },
   {
@@ -72,6 +77,7 @@ const practiceIdeas: PracticeIdea[] = [
     description: 'Name a user, a problem they face and one outcome a simple app prototype could help them achieve.',
     prompt: 'Write a one-paragraph app brief: who the user is, the problem they face, and what one screen of the app would let them do. Then write the prompt you would give an AI coding tool to build the first version.',
     courseSlug: 'ai-web-app-development',
+    lessonSlug: 'lesson-1',
     tone: 'blue',
   },
 ]
@@ -90,16 +96,49 @@ export default async function ChallengesPage() {
     .eq('id', user.id)
     .maybeSingle()) as { data: import('@/lib/database.types').Profile | null; error: unknown }
 
-  const [{ data: rawEnrollments }, { data: rawSubmissions }] = await Promise.all([
-    supabase
-      .from('enrollments')
-      .select('course_id, payment_verified_at, courses(slug)')
-      .eq('user_id', user.id),
-    supabase
-      .from('challenge_submissions')
-      .select('practice_id, response, submitted_at')
-      .eq('user_id', user.id),
-  ])
+  const practiceDbSlugs = Array.from(
+    new Set(
+      practiceIdeas.map((idea) => getCourseProduct(idea.courseSlug)?.databaseSlug ?? idea.courseSlug)
+    )
+  )
+  const practiceLessonSlugs = Array.from(new Set(practiceIdeas.map((idea) => idea.lessonSlug)))
+
+  const [{ data: rawEnrollments }, { data: rawSubmissions }, { data: rawPublishedCourses }] =
+    await Promise.all([
+      supabase
+        .from('enrollments')
+        .select('course_id, payment_verified_at, courses(slug)')
+        .eq('user_id', user.id),
+      supabase
+        .from('challenge_submissions')
+        .select('practice_id, response, submitted_at')
+        .eq('user_id', user.id),
+      supabase
+        .from('courses')
+        .select('id, slug')
+        .in('slug', practiceDbSlugs)
+        .eq('status', 'published'),
+    ])
+
+  const publishedCourses = (rawPublishedCourses ?? []) as Array<{ id: string; slug: string }>
+  const courseIdBySlug = new Map<string, string>(publishedCourses.map((c) => [c.slug, c.id]))
+  const publishedCourseIds = publishedCourses.map((c) => c.id)
+
+  type LessonContext = { course_id: string; slug: string; title: string; takeaway: string | null }
+  const lessonByCourseAndSlug = new Map<string, LessonContext>()
+
+  if (publishedCourseIds.length > 0 && practiceLessonSlugs.length > 0) {
+    const { data: rawLessons } = await supabase
+      .from('lessons')
+      .select('course_id, slug, title, takeaway')
+      .in('course_id', publishedCourseIds)
+      .in('slug', practiceLessonSlugs)
+      .eq('status', 'published')
+
+    for (const row of (rawLessons ?? []) as LessonContext[]) {
+      lessonByCourseAndSlug.set(`${row.course_id}:${row.slug}`, row)
+    }
+  }
 
   const verifiedCourseSlugs = new Set<string>()
   type RawEnrollmentItem = {
@@ -208,6 +247,11 @@ export default async function ChallengesPage() {
                   (product?.databaseSlug ? verifiedCourseSlugs.has(product.databaseSlug) : false)
                 const existingResponse = submissionsByPracticeId.get(idea.id) ?? null
                 const isSubmitted = !!existingResponse
+                const dbSlug = product?.databaseSlug ?? idea.courseSlug
+                const dbCourseId = courseIdBySlug.get(dbSlug)
+                const linkedLesson = dbCourseId
+                  ? lessonByCourseAndSlug.get(`${dbCourseId}:${idea.lessonSlug}`)
+                  : undefined
 
                 return (
                   <article
@@ -237,11 +281,32 @@ export default async function ChallengesPage() {
                     {isUnlocked ? (
                       <>
                         <div className="challenge-prompt-box">
+                          {linkedLesson && (
+                            <div className="challenge-lesson-context">
+                              <div className="challenge-lesson-link-row">
+                                <span className="challenge-lesson-source">
+                                  Lesson: {linkedLesson.title}
+                                </span>
+                                <Link
+                                  href={`/learn/${idea.courseSlug}/${linkedLesson.slug}`}
+                                  className="challenge-lesson-review-link"
+                                >
+                                  Review lesson
+                                </Link>
+                              </div>
+                              {linkedLesson.takeaway && (
+                                <p className="challenge-lesson-takeaway">
+                                  Key takeaway: {linkedLesson.takeaway}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <p className="challenge-prompt-label">YOUR TASK</p>
                           <p className="challenge-prompt-text">{idea.prompt}</p>
                         </div>
                         <ChallengeSubmitForm
                           practiceId={idea.id}
+                          practiceTitle={idea.title}
                           initialResponse={existingResponse}
                         />
                         <div className="challenge-card-footer">

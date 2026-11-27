@@ -1,16 +1,20 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
-import { CheckCircle, ChevronDown, ChevronUp, Send } from 'lucide-react'
+import { CheckCircle, ChevronDown, ChevronUp, MessageCircle, Send } from 'lucide-react'
 import { submitChallengeAction } from '@/app/actions/progress'
+
+const WHATSAPP_NUMBER = '2347018643642'
 
 interface ChallengeSubmitFormProps {
   practiceId: string
+  practiceTitle: string
   initialResponse: string | null
 }
 
 export default function ChallengeSubmitForm({
   practiceId,
+  practiceTitle,
   initialResponse,
 }: ChallengeSubmitFormProps) {
   const [open, setOpen] = useState(!initialResponse)
@@ -43,20 +47,36 @@ export default function ChallengeSubmitForm({
   }
 
   if (submitted && !open) {
+    const waMessage = encodeURIComponent(
+      `Hi ituwaAfrica, I just completed the "${practiceTitle}" practice challenge:\n\n${value}`
+    )
+    const waHref = `https://wa.me/${WHATSAPP_NUMBER}?text=${waMessage}`
+
     return (
-      <div className="challenge-submitted-state">
-        <div className="challenge-submitted-pill">
-          <CheckCircle size={15} aria-hidden="true" />
-          <span>Practice submitted</span>
+      <div className="challenge-submitted-wrap">
+        <div className="challenge-submitted-state">
+          <div className="challenge-submitted-pill">
+            <CheckCircle size={15} aria-hidden="true" />
+            <span>Practice submitted</span>
+          </div>
+          <button
+            type="button"
+            className="challenge-edit-btn"
+            onClick={handleToggle}
+            aria-expanded={false}
+          >
+            Edit response <ChevronDown size={13} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="challenge-edit-btn"
-          onClick={handleToggle}
-          aria-expanded={false}
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="challenge-share-wa-link"
         >
-          Edit response <ChevronDown size={13} />
-        </button>
+          <MessageCircle size={14} aria-hidden="true" />
+          <span>Share your output on WhatsApp</span>
+        </a>
       </div>
     )
   }
