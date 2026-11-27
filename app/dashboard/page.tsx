@@ -90,24 +90,59 @@ export default async function DashboardPage() {
   const continueCourseId = continueCourse?.id
   const continueCompleted = continueCourseId ? progressByCourse[continueCourseId] ?? 0 : 0
 
-  // Find the next incomplete lesson slug for the continue-learning card
-  let continueLessonSlug = 'lesson-1'
-  if (continueCourseId) {
-    const completedForCourse = new Set(
-      (rawProgress as Array<{ course_id: string; lesson_id?: string }> | null)
-        ?.filter((r) => r.course_id === continueCourseId && r.lesson_id)
-        .map((r) => r.lesson_id) ?? []
-    )
-    const { data: rawCourseLessons } = await supabase
+  // Find the next incomplete lesson slug and total lesson counts for all enrolled courses
+  const totalLessonsByCourse: Record<string, number> = {}
+  const nextLessonByCourse: Record<string, string> = {}
+
+  const enrolledCourseIdList = enrollments
+    .map((e) => e.course_id)
+    .filter(Boolean)
+
+  if (enrolledCourseIdList.length > 0) {
+    const { data: rawAllCourseLessons } = await supabase
       .from('lessons')
-      .select('slug, position')
-      .eq('course_id', continueCourseId)
+      .select('course_id, slug, position, id')
+      .in('course_id', enrolledCourseIdList)
       .eq('status', 'published')
       .order('position', { ascending: true })
-    const courseLessons = (rawCourseLessons ?? []) as Array<{ slug: string; position: number }>
-    const nextLesson = courseLessons.find((l) => !completedForCourse.has(l.slug))
-    continueLessonSlug = nextLesson?.slug ?? courseLessons[courseLessons.length - 1]?.slug ?? 'lesson-1'
+
+    const allCourseLessons = (rawAllCourseLessons ?? []) as Array<{
+      course_id: string
+      slug: string
+      position: number
+      id: string
+    }>
+
+    const lessonsByCourse = new Map<string, typeof allCourseLessons>()
+    for (const lesson of allCourseLessons) {
+      totalLessonsByCourse[lesson.course_id] = (totalLessonsByCourse[lesson.course_id] ?? 0) + 1
+      const list = lessonsByCourse.get(lesson.course_id) ?? []
+      list.push(lesson)
+      lessonsByCourse.set(lesson.course_id, list)
+    }
+
+    const completedByCourse = new Map<string, Set<string>>()
+    for (const row of (rawProgress as Array<{ course_id: string; lesson_id: string }> | null) ?? []) {
+      const set = completedByCourse.get(row.course_id) ?? new Set<string>()
+      set.add(row.lesson_id)
+      completedByCourse.set(row.course_id, set)
+    }
+
+    for (const courseId of enrolledCourseIdList) {
+      const courseLessons = lessonsByCourse.get(courseId) ?? []
+      const completedSet = completedByCourse.get(courseId) ?? new Set<string>()
+      const nextLesson = courseLessons.find((l) => !completedSet.has(l.id))
+      nextLessonByCourse[courseId] =
+        nextLesson?.slug ??
+        courseLessons[courseLessons.length - 1]?.slug ??
+        'lesson-1'
+    }
   }
+
+  const continueLessonSlug = continueCourseId
+    ? (nextLessonByCourse[continueCourseId] ?? 'lesson-1')
+    : 'lesson-1'
+  const continueTotal = continueCourseId ? (totalLessonsByCourse[continueCourseId] ?? 0) : 0
 
   // Academy colour map for course art
   const academyColours: Record<string, string> = {
@@ -230,7 +265,7 @@ export default async function DashboardPage() {
                   <span className="app-academy-chip">{continueCourse.academy}</span>
                   <h2 className="app-continue-title">{continueCourse.title}</h2>
                   <span className="app-progress-label">
-                    Completed lessons: {continueCompleted}
+                    Completed lessons: {continueCompleted}{continueTotal > 0 ? ` of ${continueTotal}` : ''}
                   </span>
                 </div>
                 <ArrowRight size={18} className="app-continue-arrow" aria-hidden="true" />
@@ -251,13 +286,15 @@ export default async function DashboardPage() {
                   if (!en.courses) return null
                   const c = en.courses
                   const done = progressByCourse[c.id] ?? 0
+                  const total = totalLessonsByCourse[c.id] ?? 0
+                  const nextSlug = nextLessonByCourse[c.id] ?? 'lesson-1'
                   const bg = academyColours[c.academy ?? ''] ?? '#eeecff'
                   return (
                     <Link
                       key={en.id}
-                      href={`/learn/${c.slug}/lesson-1`}
+                      href={`/learn/${c.slug}/${nextSlug}`}
                       className="app-course-tile"
-                      aria-label={`${c.title} : ${done} completed lessons`}
+                      aria-label={`${c.title} : ${done}${total > 0 ? ` of ${total}` : ''} completed lessons`}
                     >
                       <div className="app-tile-art" style={{ background: bg }} aria-hidden="true">
                         <span className="app-tile-num">{String(i + 1).padStart(2, '0')}</span>
@@ -265,7 +302,9 @@ export default async function DashboardPage() {
                       <div className="app-tile-body">
                         {c.academy && <span className="app-academy-chip app-academy-chip--xs">{c.academy}</span>}
                         <h3 className="app-tile-title">{c.title}</h3>
-                        <span className="app-progress-label">Completed lessons: {done}</span>
+                        <span className="app-progress-label">
+                          Completed lessons: {done}{total > 0 ? ` of ${total}` : ''}
+                        </span>
                       </div>
                     </Link>
                   )

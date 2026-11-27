@@ -210,6 +210,7 @@ export default async function CourseDetailPage({
     .maybeSingle()
   if (databaseCourseError) console.error('Unable to load course availability:', databaseCourseError)
   let isEnrolled = false
+  let nextLessonSlug = 'lesson-1'
   if (user && databaseCourse) {
     const { data: enrollment, error: enrollmentError } = await supabase
       .from('enrollments')
@@ -221,6 +222,31 @@ export default async function CourseDetailPage({
       console.error('Unable to load learner course access:', enrollmentError)
     } else if (enrollment) {
       isEnrolled = product.price ? !!enrollment.payment_verified_at : true
+    }
+
+    if (isEnrolled) {
+      const [{ data: rawLessons }, { data: rawProgress }] = await Promise.all([
+        supabase
+          .from('lessons')
+          .select('id, slug, position')
+          .eq('course_id', databaseCourse.id)
+          .eq('status', 'published')
+          .order('position', { ascending: true }),
+        supabase
+          .from('lesson_progress')
+          .select('lesson_id')
+          .eq('user_id', user.id)
+          .eq('course_id', databaseCourse.id),
+      ])
+      const courseLessons = (rawLessons ?? []) as Array<{ id: string; slug: string; position: number }>
+      const completedIds = new Set(
+        ((rawProgress ?? []) as Array<{ lesson_id: string }>).map((r) => r.lesson_id)
+      )
+      const nextLesson = courseLessons.find((l) => !completedIds.has(l.id))
+      nextLessonSlug =
+        nextLesson?.slug ??
+        courseLessons[courseLessons.length - 1]?.slug ??
+        'lesson-1'
     }
   }
 
@@ -244,7 +270,7 @@ export default async function CourseDetailPage({
   const priceInfo = formatDualPrice(getActivePrice(product))
   const price = priceInfo.isFree ? null : priceInfo.display
 
-  const firstLessonPath = `/learn/${slug}/lesson-1`
+  const firstLessonPath = `/learn/${slug}/${nextLessonSlug}`
   const waText = encodeURIComponent(`Hi ituwaAfrica, I'm interested in the ${title} course.`)
   const waHref = `https://wa.me/${WHATSAPP_NUMBER}?text=${waText}`
 
@@ -421,7 +447,7 @@ export default async function CourseDetailPage({
             />
           ) : (
             <Link href={firstLessonPath} className={`cdp-cta-btn cdp-cta-btn-free`}>
-              Start now <ArrowRight size={15} />
+              {isEnrolled ? 'Continue learning' : 'Start now'} <ArrowRight size={15} />
             </Link>
           )}
         </div>
