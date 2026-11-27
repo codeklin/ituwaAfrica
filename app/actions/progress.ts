@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getCourseProduct } from '@/lib/course-products'
+import { getPracticeIdea } from '@/lib/practice-ideas'
 
 export async function toggleLessonProgressAction({
   lessonId,
@@ -151,7 +152,8 @@ export async function submitChallengeAction({
   const trimmedId = typeof practiceId === 'string' ? practiceId.trim() : ''
   const trimmedResponse = typeof response === 'string' ? response.trim() : ''
 
-  if (!trimmedId) {
+  const idea = getPracticeIdea(trimmedId)
+  if (!idea) {
     return { success: false, error: 'Invalid practice submission.' }
   }
   if (trimmedResponse.length < 10) {
@@ -168,6 +170,36 @@ export async function submitChallengeAction({
 
   if (!user) {
     return { success: false, error: 'You must be signed in to submit a practice response.' }
+  }
+
+  const product = getCourseProduct(idea.courseSlug)
+  if (product?.price) {
+    const dbSlug = product.databaseSlug ?? idea.courseSlug
+    const [{ data: profile }, { data: course }] = await Promise.all([
+      supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+      supabase.from('courses').select('id').eq('slug', dbSlug).maybeSingle(),
+    ])
+    const isAdmin = (profile as { role?: string } | null)?.role === 'admin'
+
+    if (!isAdmin) {
+      if (!course) {
+        return { success: false, error: 'Enroll in this course to submit this practice exercise.' }
+      }
+      const { data: enrollment, error: enrollmentError } = await supabase
+        .from('enrollments')
+        .select('payment_verified_at')
+        .eq('user_id', user.id)
+        .eq('course_id', course.id)
+        .maybeSingle()
+
+      if (enrollmentError) {
+        console.error('Failed to validate enrollment for challenge submission:', enrollmentError)
+        return { success: false, error: 'Could not verify course access. Please try again.' }
+      }
+      if (!enrollment?.payment_verified_at) {
+        return { success: false, error: 'Enroll in this course to submit this practice exercise.' }
+      }
+    }
   }
 
   const { error } = await supabase.from('challenge_submissions').upsert(
