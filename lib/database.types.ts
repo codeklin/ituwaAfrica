@@ -88,6 +88,15 @@ export interface LessonProgress {
   completed_at: string
 }
 
+export interface ChallengeSubmission {
+  id: string
+  user_id: string
+  practice_id: string
+  response: string
+  submitted_at: string
+  updated_at: string
+}
+
 export interface AccessCode {
   id: string
   code: string
@@ -167,6 +176,15 @@ export interface Database {
         Row: SupabaseRecord<LessonProgress>
         Insert: SupabaseRecord<Omit<LessonProgress, 'id'>>
         Update: SupabaseRecord<Partial<Omit<LessonProgress, 'id'>>>
+        Relationships: []
+      }
+      challenge_submissions: {
+        Row: SupabaseRecord<ChallengeSubmission>
+        Insert: SupabaseRecord<
+          Omit<ChallengeSubmission, 'id' | 'submitted_at' | 'updated_at'> &
+            Partial<Pick<ChallengeSubmission, 'submitted_at' | 'updated_at'>>
+        >
+        Update: SupabaseRecord<Partial<Omit<ChallengeSubmission, 'id' | 'user_id' | 'practice_id'>>>
         Relationships: []
       }
     }
