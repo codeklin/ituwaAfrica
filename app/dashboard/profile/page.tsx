@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   User,
   ArrowRight,
-} from 'lucide-react'import { createClient } from '@/lib/supabase/server'
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
 import { signOut } from '@/app/actions/auth'
 import Brand from '@/components/brand'
 import AppBottomNav from '@/components/app-bottom-nav'
