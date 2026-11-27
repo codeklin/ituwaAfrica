@@ -136,3 +136,57 @@ export async function toggleLessonProgressAction({
 
   return { success: true, completed }
 }
+
+// ---------------------------------------------------------------------------
+// submitChallengeAction
+// Saves (or updates) a learner's written response to a practice challenge.
+// ---------------------------------------------------------------------------
+export async function submitChallengeAction({
+  practiceId,
+  response,
+}: {
+  practiceId: string
+  response: string
+}) {
+  const trimmedId = typeof practiceId === 'string' ? practiceId.trim() : ''
+  const trimmedResponse = typeof response === 'string' ? response.trim() : ''
+
+  if (!trimmedId) {
+    return { success: false, error: 'Invalid practice submission.' }
+  }
+  if (trimmedResponse.length < 10) {
+    return { success: false, error: 'Your response must be at least 10 characters.' }
+  }
+  if (trimmedResponse.length > 4000) {
+    return { success: false, error: 'Response is too long. Please keep it under 4,000 characters.' }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, error: 'You must be signed in to submit a practice response.' }
+  }
+
+  const { error } = await supabase.from('challenge_submissions').upsert(
+    {
+      user_id: user.id,
+      practice_id: trimmedId,
+      response: trimmedResponse,
+      submitted_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,practice_id' }
+  )
+
+  if (error) {
+    console.error('Failed to save challenge submission:', error)
+    return { success: false, error: 'Could not save your response. Please try again.' }
+  }
+
+  revalidatePath('/dashboard/challenges')
+  revalidatePath('/dashboard')
+
+  return { success: true }
+}

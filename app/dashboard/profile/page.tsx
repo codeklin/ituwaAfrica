@@ -13,8 +13,7 @@ import {
   ShieldCheck,
   User,
   ArrowRight,
-} from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+} from 'lucide-react'import { createClient } from '@/lib/supabase/server'
 import { signOut } from '@/app/actions/auth'
 import Brand from '@/components/brand'
 import AppBottomNav from '@/components/app-bottom-nav'
@@ -29,23 +28,32 @@ export default async function ProfilePage() {
 
   const { data: profile } = (await supabase
     .from('profiles')
-    .select('*')
+    .select('id, full_name, email, role, created_at')
     .eq('id', user.id)
-    .single()) as { data: import('@/lib/database.types').Profile | null; error: unknown }
+    .maybeSingle()) as { data: import('@/lib/database.types').Profile | null; error: unknown }
 
-  const { count: enrollmentsCount } = await supabase
-    .from('enrollments')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-
-  const { count: completedLessonsCount } = await supabase
-    .from('lesson_progress')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
+  const [
+    { count: enrollmentsCount },
+    { count: completedLessonsCount },
+    { count: challengesCount },
+  ] = await Promise.all([
+    supabase
+      .from('enrollments')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id),
+    supabase
+      .from('lesson_progress')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id),
+    supabase
+      .from('challenge_submissions')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id),
+  ])
 
   const fullName = profile?.full_name ?? user.email?.split('@')[0] ?? 'Learner'
   const email = profile?.email ?? user.email ?? ''
-  const role = profile?.role ?? 'learner'
+  const role = (profile?.role as string | null | undefined) ?? 'learner'
   const joinedDate = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString('en-GB', {
         month: 'short',
@@ -171,6 +179,16 @@ export default async function ProfilePage() {
               <div>
                 <span className="profile-stat-number">{completedLessonsCount ?? 0}</span>
                 <span className="profile-stat-label">Lessons Finished</span>
+              </div>
+            </div>
+
+            <div className="profile-stat-box">
+              <div className="profile-stat-icon-wrap icon-purple">
+                <PenLine size={20} />
+              </div>
+              <div>
+                <span className="profile-stat-number">{challengesCount ?? 0}</span>
+                <span className="profile-stat-label">Challenges Done</span>
               </div>
             </div>
 

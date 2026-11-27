@@ -31,10 +31,15 @@ export default async function DashboardPage() {
 
   const { data: rawProgress } = await supabase
     .from('lesson_progress')
-    .select('course_id')
+    .select('course_id, lesson_id')
     .eq('user_id', user.id)
 
-  const progressRows = rawProgress as Array<{ course_id: string }> | null
+  const { data: rawChallengeSubmissions } = await supabase
+    .from('challenge_submissions')
+    .select('practice_id')
+    .eq('user_id', user.id)
+
+  const progressRows = rawProgress as Array<{ course_id: string; lesson_id: string }> | null
   const progressByCourse: Record<string, number> = {}
   progressRows?.forEach((row) => {
     progressByCourse[row.course_id] = (progressByCourse[row.course_id] ?? 0) + 1
@@ -79,10 +84,30 @@ export default async function DashboardPage() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const continueEnrollment = enrollments?.[0]
   const totalLessons = progressRows?.length ?? 0
+  const totalChallenges = rawChallengeSubmissions?.length ?? 0
   const isAdmin = profile?.role === 'admin'
   const continueCourse = continueEnrollment?.courses
   const continueCourseId = continueCourse?.id
   const continueCompleted = continueCourseId ? progressByCourse[continueCourseId] ?? 0 : 0
+
+  // Find the next incomplete lesson slug for the continue-learning card
+  let continueLessonSlug = 'lesson-1'
+  if (continueCourseId) {
+    const completedForCourse = new Set(
+      (rawProgress as Array<{ course_id: string; lesson_id?: string }> | null)
+        ?.filter((r) => r.course_id === continueCourseId && r.lesson_id)
+        .map((r) => r.lesson_id) ?? []
+    )
+    const { data: rawCourseLessons } = await supabase
+      .from('lessons')
+      .select('slug, position')
+      .eq('course_id', continueCourseId)
+      .eq('status', 'published')
+      .order('position', { ascending: true })
+    const courseLessons = (rawCourseLessons ?? []) as Array<{ slug: string; position: number }>
+    const nextLesson = courseLessons.find((l) => !completedForCourse.has(l.slug))
+    continueLessonSlug = nextLesson?.slug ?? courseLessons[courseLessons.length - 1]?.slug ?? 'lesson-1'
+  }
 
   // Academy colour map for course art
   const academyColours: Record<string, string> = {
@@ -178,6 +203,11 @@ export default async function DashboardPage() {
               <span className="app-stat-num">{totalLessons}</span>
               <span className="app-stat-label">Lessons done</span>
             </div>
+            <div className="app-stat-divider" aria-hidden="true" />
+            <div className="app-stat">
+              <span className="app-stat-num">{totalChallenges}</span>
+              <span className="app-stat-label">Challenges</span>
+            </div>
           </section>
 
           {/* Continue learning */}
@@ -185,7 +215,7 @@ export default async function DashboardPage() {
             <section className="app-section">
               <div className="app-section-label">CONTINUE LEARNING</div>
               <Link
-                href={`/learn/${continueCourse.slug}/lesson-1`}
+                href={`/learn/${continueCourse.slug}/${continueLessonSlug}`}
                 className="app-continue-card"
                 aria-label={`Continue: ${continueCourse.title}`}
               >
