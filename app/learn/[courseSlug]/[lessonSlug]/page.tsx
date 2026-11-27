@@ -311,6 +311,18 @@ export default async function LessonPage({
     }
   }
 
+  // ── Auto-enroll learner if course is accessible ────────────────
+  if (!adminPreview && (accessibleCourse.access === 'free' || lesson.access_level === 'free')) {
+    await supabase.from('enrollments').upsert(
+      {
+        user_id: user.id,
+        course_id: accessibleCourse.id,
+        enrolled_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,course_id', ignoreDuplicates: true }
+    )
+  }
+
   // ── Fetch modules for this course ──────────────────────────────
   const { data: rawModules } = await contentClient
     .from('modules')

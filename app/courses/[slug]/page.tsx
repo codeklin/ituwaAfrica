@@ -210,17 +210,17 @@ export default async function CourseDetailPage({
     .maybeSingle()
   if (databaseCourseError) console.error('Unable to load course availability:', databaseCourseError)
   let isEnrolled = false
-  if (user && product.price && databaseCourse) {
+  if (user && databaseCourse) {
     const { data: enrollment, error: enrollmentError } = await supabase
       .from('enrollments')
-      .select('payment_verified_at')
+      .select('id, payment_verified_at')
       .eq('user_id', user.id)
       .eq('course_id', databaseCourse.id)
       .maybeSingle()
     if (enrollmentError) {
       console.error('Unable to load learner course access:', enrollmentError)
-    } else {
-      isEnrolled = !!enrollment?.payment_verified_at
+    } else if (enrollment) {
+      isEnrolled = product.price ? !!enrollment.payment_verified_at : true
     }
   }
 
@@ -299,7 +299,7 @@ export default async function CourseDetailPage({
             />
           ) : (
             <Link href={firstLessonPath} className="cdp-cta-btn cdp-cta-btn-free">
-              Start now <ArrowRight size={15} />
+              {isEnrolled ? 'Continue learning' : 'Start now'} <ArrowRight size={15} />
             </Link>
           )}
           {product.price && isAuthenticated && (

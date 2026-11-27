@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   type EnrollmentWithCourse = import('@/lib/database.types').Enrollment & {
     courses: import('@/lib/database.types').Course | null
   }
-  const enrollments = rawEnrollments as EnrollmentWithCourse[] | null
+  let enrollments = (rawEnrollments ?? []) as EnrollmentWithCourse[]
 
   const { data: rawProgress } = await supabase
     .from('lesson_progress')
@@ -39,6 +39,40 @@ export default async function DashboardPage() {
   progressRows?.forEach((row) => {
     progressByCourse[row.course_id] = (progressByCourse[row.course_id] ?? 0) + 1
   })
+
+  // Self-healing: if the learner has progress records for courses not yet in enrollments, include them
+  const enrolledCourseIds = new Set(enrollments.map((e) => e.course_id))
+  const missingCourseIds = Object.keys(progressByCourse).filter((id) => !enrolledCourseIds.has(id))
+  if (missingCourseIds.length > 0) {
+    const { data: missingCourses } = await supabase
+      .from('courses')
+      .select('*')
+      .in('id', missingCourseIds)
+
+    if (missingCourses && missingCourses.length > 0) {
+      // Backfill missing enrollment records in database
+      await supabase.from('enrollments').upsert(
+        missingCourses.map((c) => ({
+          user_id: user.id,
+          course_id: c.id,
+          enrolled_at: new Date().toISOString(),
+        })),
+        { onConflict: 'user_id,course_id', ignoreDuplicates: true }
+      )
+
+      const backfilled: EnrollmentWithCourse[] = missingCourses.map((c) => ({
+        id: `auto-${c.id}`,
+        user_id: user.id,
+        course_id: c.id,
+        enrolled_at: new Date().toISOString(),
+        completed_at: null,
+        payment_verified_at: null,
+        payment_verified_by: null,
+        courses: c,
+      }))
+      enrollments = [...enrollments, ...backfilled]
+    }
+  }
 
   const firstName = profile?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? 'Learner'
   const hour = new Date().getHours()

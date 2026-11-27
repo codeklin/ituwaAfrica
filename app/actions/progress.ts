@@ -92,6 +92,16 @@ export async function toggleLessonProgressAction({
   }
 
   if (completed) {
+    // Ensure the learner is enrolled in the course
+    await supabase.from('enrollments').upsert(
+      {
+        user_id: user.id,
+        course_id: course.id,
+        enrolled_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,course_id', ignoreDuplicates: true }
+    )
+
     const { error } = await supabase.from('lesson_progress').upsert(
       {
         user_id: user.id,
