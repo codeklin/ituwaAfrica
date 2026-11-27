@@ -113,6 +113,29 @@ stable as $$
   select role from public.profiles where id = user_id;
 $$;
 
+-- Prevent non-admins from escalating their own account role
+create or replace function public.prevent_untrusted_role_changes()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.role is distinct from old.role
+    and auth.uid() is not null
+    and public.get_user_role(auth.uid()) is distinct from 'admin'::public.user_role
+  then
+    raise exception 'Only an administrator can change account roles.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_untrusted_role_changes on public.profiles;
+create trigger prevent_untrusted_role_changes
+  before update on public.profiles
+  for each row execute procedure public.prevent_untrusted_role_changes();
+
 -- Admins can read every profile (used by /admin page)
 -- Must be created after get_user_role exists
 drop policy if exists "Admins can read all profiles" on public.profiles;

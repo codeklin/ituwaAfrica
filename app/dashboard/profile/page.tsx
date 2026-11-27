@@ -140,12 +140,6 @@ export default async function ProfilePage() {
             </div>
 
             <div className="profile-hero-actions">
-              {role === 'admin' && (
-                <Link href="/admin" className="button button-dark profile-action-btn">
-                  <ShieldCheck size={15} />
-                  <span>Admin console</span>
-                </Link>
-              )}
               <Link href="/courses" className="button button-light profile-action-btn">
                 <span>Browse courses</span>
                 <ArrowRight size={15} />

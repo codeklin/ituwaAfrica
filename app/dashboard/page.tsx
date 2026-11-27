@@ -12,11 +12,11 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  const { data: profile } = (await supabase
     .from('profiles')
-    .select('*')
+    .select('id, full_name, email, role')
     .eq('id', user.id)
-    .single() as { data: import('@/lib/database.types').Profile | null; error: unknown }
+    .maybeSingle()) as { data: import('@/lib/database.types').Profile | null; error: unknown }
 
   const { data: rawEnrollments } = await supabase
     .from('enrollments')
@@ -122,30 +122,6 @@ export default async function DashboardPage() {
         </header>
 
         <main className="app-main" id="main-content">
-          {/* Administrator shortcuts */}
-          {isAdmin && (
-            <section className="super-admin-alert-banner">
-              <div className="super-admin-banner-left">
-                <div className="super-admin-badge-strip">
-                  <ShieldCheck size={15} />
-                  <span>ADMINISTRATOR</span>
-                </div>
-                <h2>Admin workspace</h2>
-                <p>
-                  Manage account roles, review enrollments, and publish or unpublish courses.
-                </p>
-              </div>
-              <div className="super-admin-banner-btns">
-                <Link href="/admin" className="button button-dark super-admin-action-btn">
-                  Open admin console <ArrowRight size={15} />
-                </Link>
-                <Link href="/admin/users" className="button button-light super-admin-action-btn">
-                  Manage Learners
-                </Link>
-              </div>
-            </section>
-          )}
-
           {/* Greeting band */}
           <section className="app-greeting-band">
             <div className="app-greeting-text">
